@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 区块表：存储链的主干信息
+model Block {
+  height    Int      @id // 使用区块高度作为主键，更易于查询
+  hash      String   @unique
+  timestamp DateTime
+  txCount   Int
+
+  size         Int? // 区块大小，单位字节
+  weight       Int? // 区块权重，用于计算难度调整
+  difficulty   Decimal @db.Decimal(20, 8) // 挖矿难度
+  minerAddress String? // 挖出此区块的地址 (来自 coinbase 交易)
+  version      Int // 区块版本号
+  nonce        BigInt // 随机数，用于挖矿（改为BigInt以支持大数值）
+
+  // 需要计算的字段
+  reward     BigInt // 挖出此区块的奖励金额，单位为最小单位 (e.g., satoshis)
+  feeSpanMin BigInt // 交易费范围
+  feeSpanMax BigInt // 交易费范围
+  medianFee  BigInt // 中值交易费，用于计算难度调整
+  totalFees  BigInt // 此区块内所有交易的总交易费
+
+  // 关系：一个区块包含多个交易
+  transactions Transaction[]
+
+  @@index([minerAddress])
+}
+
+// 交易表
+model Transaction {
+  txid        String   @id // 交易哈希作为主键
+  hash        String   @unique // (用于 wtxid 等, 如果需要的话)
+  timestamp   DateTime
+  blockHeight Int
+  block       Block    @relation(fields: [blockHeight], references: [height])
+  size        Int
+  weight      Int
+
+  // 关系：一个交易包含多个输入和输出
+  // 我们使用一个表 TransactionIO 来存储
+  io TransactionIO[]
+
+  @@index([blockHeight])
+}
+
+// 核心设计：地址表
+// 这张表是实现功能 1 和 2 的关键
+model Address {
+  address String @id // 地址作为主键
+
+  // 功能 2: 统计持币者
+  // 我们将余额“反规范化”存储在这里，由索引器实时更新
+  // 这使得“查询前100名”的操作极其快速，而不是实时计算
+  balance BigInt @default(0) // 存储为最小单位 (e.g., satoshis)
+
+  // 功能 1: 统计活跃钱包
+  lastActive DateTime @default(now()) // 每次交易时更新此时间戳
+
+  // 额外统计
+  txCount  Int    @default(0) // 总交易次数
+  received BigInt @default(0) // 累计接收
+  sent     BigInt @default(0) // 累计发送 (绝对值)
+
+  // 关系：一个地址涉及多个交易的输入/输出
+  io TransactionIO[]
+
+  // 关系：一个地址可以有多个标签
+  tags AddressTag[]
+
+  @@index([balance]) // 为持币排名创建索引
+  @@index([lastActive]) // 为查询活跃度创建索引
+}
+
+// 核心设计：交易输入/输出表
+// 这张表是实现功能 4 (交易图) 的关键
+model TransactionIO {
+  id String @id @default(cuid())
+
+  txid    String
+  address String
+  amount  BigInt // 正数表示接收 (Vout)，负数表示花费 (Vin)
+
+  // 外键1：必须指向一个存在的 Transaction
+  transaction Transaction @relation(fields: [txid], references: [txid])
+  // 外键2：必须指向一个存在的 Address
+  addr        Address     @relation(fields: [address], references: [address])
+
+  // 用于 Vin：它花了哪个 Vout？
+  spentTxid  String?
+  spentIndex Int?
+
+  // --- 新增字段 ---
+  // 对于 Vout (amount > 0)，这记录了它是交易中的第几个输出 (vout.n)
+  // 这对于 Vin 快速查找它所花费的 Vout (方案B) 至关重要
+  voutIndex Int?
+
+  @@index([txid])
+  @@index([address])
+  @@index([spentTxid, spentIndex])
+  // --- 新增索引 ---
+  // 极大加速 Vin 查找 Vout (方案B)
+  @@index([txid, voutIndex])
+}
+
+model AddressSnapshot {
+  id      String   @id @default(cuid())
+  address String
+  balance BigInt
+  rank    Int // 当天的排名
+  date    DateTime @db.Date // 只存储日期
+
+  @@unique([address, date]) // 确保一个地址一天只有一条快照
+  @@index([date, rank]) // 快速查询某一天的富豪榜
+  @@index([address, date]) // 快速查询某个地址的历史余额
+}
+
+model Price {
+  id        String   @id @default(cuid())
+  price     Decimal  @db.Decimal(20, 8) // 价格 (USD)
+  timestamp DateTime @default(now()) // 记录时间
+
+  @@index([timestamp]) // 按时间查询
+}
+
+// 网络算力表
+model NetworkHashrate {
+  id        String   @id @default(cuid())
+  hashrate  BigInt // 网络算力
+  timestamp DateTime @default(now()) // 记录时间
+
+  @@index([timestamp]) // 按时间查询
+}
+
+// 地址标签表
+model AddressTag {
+  id String @id @default(cuid())
+
+  // 标签基本信息
+  name        String // 标签名称
+  type        String // 标签类型 (exchange, whale, contract, defi, etc.)
+  description String? // 备注/描述
+  status      Int     @default(0) // 标签状态 (1:启用, 0:停用)
+
+  // 可选：标签来源/创建者
+  source String? // 标签来源 (manual, auto, community, etc.)
+
+  // 关联地址
+  address String
+  addr    Address @relation(fields: [address], references: [address], onDelete: Cascade)
+
+  // 元数据
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  //  排序
+  sortOrder Int @default(0) // 排序顺序
+
+  @@index([address])
+  @@index([type])
+  @@index([name])
+}
+
+// 每天统计表
+model DailyStats {
+  id String @id @default(cuid())
+
+  date DateTime @db.Date // 只存储日期
+
+  // 统计指标
+  totalBlocks    Int // 总区块数
+  totalTxs       Int // 总交易数
+  totalVolume    Decimal @db.Decimal(20, 8) // 总交易量 (精确小数)
+  addrCount      Int // 地址数
+  totalMarketCap Decimal @db.Decimal(20, 8) // 总市值 (精确小数)
+
+  @@unique([date]) // 确保一个日期只有一条记录
+  @@index([date]) // 快速查询某一天的统计数据
+}
