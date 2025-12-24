@@ -15,6 +15,7 @@ type PrismaTransactionClient = Omit<PrismaService, '$connect' | '$disconnect' | 
 export class IndexerService implements OnModuleInit {
   private readonly logger = new Logger(IndexerService.name)
   private isSyncing = false // 锁，防止重复执行
+  private isLogging = false // 锁，防止重复日志
 
   constructor(
     private readonly rpc: RpcService,
@@ -36,7 +37,8 @@ export class IndexerService implements OnModuleInit {
   async handleCron() {
     // 检查是否开启了同步
     if (process.env.SKIP_SYNC === 'true') {
-      this.logger.warn('Sync is disabled. Skipping cron job.')
+      if (!this.isLogging) this.logger.warn('Sync is disabled. Skipping cron job.')
+      this.isLogging = true
       return
     }
 
@@ -50,9 +52,11 @@ export class IndexerService implements OnModuleInit {
    */
   async syncBlocks() {
     if (this.isSyncing) {
-      this.logger.warn('Sync is already in progress. Skipping.')
+      if (!this.isLogging) this.logger.warn('Sync is already in progress. Skipping.')
+      this.isLogging = true
       return
     }
+    this.isLogging = false
     this.isSyncing = true
     this.logger.log('Starting block sync process...')
 
@@ -210,6 +214,18 @@ export class IndexerService implements OnModuleInit {
           }
         })
 
+        // --- [新增] 从 MempoolTransaction 表中删除已打包的交易 ---
+        const txIds = block.tx.map((t: any) => t.txid);
+        if (txIds.length > 0) {
+          await tx.mempoolTransaction.deleteMany({
+            where: {
+              txid: { in: txIds }
+            }
+          });
+          // this.logger.debug(`Removed ${txIds.length} transactions from MempoolTransaction.`);
+        }
+        // --- Mempool 清理结束 ---
+
         // 2. 遍历所有交易
         for (const txn of block.tx) {
           // 2.1 创建 Transaction 记录
@@ -325,14 +341,17 @@ export class IndexerService implements OnModuleInit {
    * 辅助函数：查找 Vin 对应的 Vout 信息 (地址和金额)
    * (已包含数据库优先查询 和 RPC 逻辑修复)
    */
-  private async findPreviousVout(
+  public async findPreviousVout(
     txid: string,
     index: number,
-    tx: PrismaTransactionClient
+    tx?: PrismaTransactionClient
   ): Promise<{ address: string; amount: bigint } | null> {
+    // 如果没有传入事务客户端，使用默认的 prisma 服务
+    const client = tx || this.prisma;
+
     // --- 方案 B: (首选) 从数据库查找 ---
     try {
-      const voutIO = await tx.transactionIO.findFirst({
+      const voutIO = await client.transactionIO.findFirst({
         where: {
           txid: txid,
           voutIndex: index,
@@ -347,7 +366,7 @@ export class IndexerService implements OnModuleInit {
     }
 
     // --- 方案 A: (回退) 实时 RPC 调用 ---
-    this.logger.debug(`DB lookup failed, falling back to RPC for ${txid}:${index}`)
+    // this.logger.debug(`DB lookup failed, falling back to RPC for ${txid}:${index}`)
     try {
       const prevTx = await this.rpc.call<any>('getrawtransaction', [txid, true])
       const vout = prevTx.vout[index]
@@ -363,7 +382,7 @@ export class IndexerService implements OnModuleInit {
       this.logger.warn(`RPC lookup failed for prev vout: ${txid}:${index}`, error.message)
     }
 
-    this.logger.error(`Could not find prev vout for ${txid}:${index} by any method.`)
+    // this.logger.error(`Could not find prev vout for ${txid}:${index} by any method.`)
     return null
   }
 

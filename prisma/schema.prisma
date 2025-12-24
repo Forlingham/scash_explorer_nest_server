@@ -184,3 +184,17 @@ model DailyStats {
   @@unique([date]) // 确保一个日期只有一条记录
   @@index([date]) // 快速查询某一天的统计数据
 }
+
+// 内存池交易表
+model MempoolTransaction {
+  txid        String   @id // 交易哈希作为主键
+  hash        String // (用于 wtxid 等, 如果需要的话)
+  timestamp   DateTime @default(now())
+  blockHeight Int      @default(0) // 内存池交易默认为 0
+  size        Int
+  weight      Int
+
+  // 存储输入输出详情，使用 JSON 格式
+  // io
+  io Json
+}
