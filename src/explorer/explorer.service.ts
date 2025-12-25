@@ -74,9 +74,7 @@ export class ExplorerService {
 
       // 计算确认次数（当前区块高度 - 交易所在区块高度 + 1）
       // 如果交易还未被确认（当前区块高度小于交易所在区块高度），确认次数为0
-      const confirmations = currentBlockHeight && tx.blockHeight <= currentBlockHeight
-        ? currentBlockHeight - tx.blockHeight + 1
-        : 0
+      const confirmations = currentBlockHeight && tx.blockHeight <= currentBlockHeight ? currentBlockHeight - tx.blockHeight + 1 : 0
 
       return {
         txid: tx.txid,
@@ -724,9 +722,7 @@ export class ExplorerService {
 
       // 上一层（收到）：对方 -> 我
       if (isReceiver) {
-        const myReceived = outputs
-          .filter((o) => o.address === address)
-          .reduce((sum, o) => sum + Number(o.amount), 0)
+        const myReceived = outputs.filter((o) => o.address === address).reduce((sum, o) => sum + Number(o.amount), 0)
 
         // 去重输入地址（同一交易同一地址可能有多个输入）
         const uniqueSenders = Array.from(new Set(inputs.map((i) => i.address).filter((a) => a !== address)))
@@ -1645,5 +1641,30 @@ export class ExplorerService {
       }
     })
     return created
+  }
+
+  // 获取内存池中的交易数据
+  async getMempoolTransactions(page: number, pageSize: number) {
+    const skip = (page - 1) * pageSize
+    const transactions = await this.prisma.mempoolTransaction.findMany({
+      skip,
+      take: pageSize,
+      orderBy: {
+        timestamp: 'desc'
+      }
+    })
+
+    const total = await this.prisma.mempoolTransaction.count()
+    const totalPages = Math.ceil(total / pageSize)
+    const processedTransactions = this.processTransactionData(transactions)
+    return {
+      list: processedTransactions,
+      pagination: {
+        total: total,
+        totalPages: totalPages,
+        currentPage: page,
+        pageSize: pageSize
+      }
+    }
   }
 }

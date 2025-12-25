@@ -431,12 +431,21 @@ export class ExplorerController {
 
   // 添加地址标签
   @Post('address/addTag')
-  addAddressTag(
-    @Body() body: { address: string; name: string; type: string; description?: string }
-  ) {
+  addAddressTag(@Body() body: { address: string; name: string; type: string; description?: string }) {
     const { address, name, type, description } = body
     this.logger.log(`Request received for /address/tag address=${address} name=${name} type=${type}`)
     return this.explorerService.addAddressTag({ address, name, type, description })
   }
-  
+
+  // 获取内存池中的交易数据
+  @Get('mempool/transactions')
+  getMempoolTransactions(
+    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
+    @Query('pageSize', new ParseIntPipe({ optional: true })) pageSize?: number
+  ) {
+    page = page || 1
+    pageSize = pageSize || 20
+    this.logger.log(`Request received for /mempool/transactions?page=${page}&pageSize=${pageSize}`)
+    return this.explorerService.getMempoolTransactions(page, pageSize)
+  }
 }
