@@ -264,12 +264,14 @@ export class ExplorerService {
     }
 
     // 尝试按高度查询
-    const blockByHeight = await this.prisma.block.findFirst({
-      where: { height: Number(heightOrHash) }
-    })
+    if (!isNaN(Number(heightOrHash))) {
+      const blockByHeight = await this.prisma.block.findFirst({
+        where: { height: Number(heightOrHash) }
+      })
 
-    if (blockByHeight) {
-      return blockByHeight
+      if (blockByHeight) {
+        return blockByHeight
+      }
     }
 
     throw new Error('Block not found')

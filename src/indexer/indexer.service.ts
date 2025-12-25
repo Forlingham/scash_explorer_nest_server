@@ -42,7 +42,6 @@ export class IndexerService implements OnModuleInit {
       return
     }
 
-    this.logger.log('Cron job: Checking for new blocks...')
     await this.syncBlocks()
   }
 
