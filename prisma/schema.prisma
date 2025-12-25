@@ -190,7 +190,7 @@ model MempoolTransaction {
   txid        String   @id // 交易哈希作为主键
   hash        String // (用于 wtxid 等, 如果需要的话)
   timestamp   DateTime @default(now())
-  blockHeight Int      @default(0) // 内存池交易默认为 0
+  blockHeight Int      @default(-1) // 内存池交易默认为 -1
   size        Int
   weight      Int
 

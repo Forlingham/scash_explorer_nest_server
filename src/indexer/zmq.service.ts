@@ -170,7 +170,7 @@ export class ZmqService implements OnModuleInit, OnModuleDestroy {
               txid: txid,
               hash: tx.hash,
               timestamp: new Date(), // 使用当前时间作为接收时间
-              blockHeight: 0,
+              blockHeight: -1,
               size: tx.size,
               weight: tx.weight || 0,
               io: [...inputs, ...outputs]

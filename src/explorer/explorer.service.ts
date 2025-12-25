@@ -26,7 +26,7 @@ export class ExplorerService {
   }
 
   // 处理交易数据，提取所需格式
-  private processTransactionData(transactions: any[], currentBlockHeight: number) {
+  private processTransactionData(transactions: any[], currentBlockHeight?: number) {
     return transactions.map((tx) => {
       // 分离输入和输出
       const inputs = tx.io.filter((io) => io.amount < 0)
@@ -72,8 +72,11 @@ export class ExplorerService {
         amount: Math.abs(Number(input.amount))
       }))
 
-      // 计算确认次数
-      const confirmations = currentBlockHeight - tx.blockHeight + 1
+      // 计算确认次数（当前区块高度 - 交易所在区块高度 + 1）
+      // 如果交易还未被确认（当前区块高度小于交易所在区块高度），确认次数为0
+      const confirmations = currentBlockHeight && tx.blockHeight <= currentBlockHeight
+        ? currentBlockHeight - tx.blockHeight + 1
+        : 0
 
       return {
         txid: tx.txid,
@@ -597,6 +600,17 @@ export class ExplorerService {
     })
 
     if (!tx) {
+      // 当交易不存在的时候需要查询一下内存池
+      const mempoolTx = await this.prisma.mempoolTransaction.findUnique({
+        where: { txid: txid }
+      })
+      if (mempoolTx) {
+        const [processedTransaction] = this.processTransactionData([mempoolTx])
+        return {
+          tx: mempoolTx,
+          processedTransaction: processedTransaction
+        }
+      }
       return {
         tx: null,
         processedTransaction: null
