@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { RpcService } from '../rpc/rpc.service'
 import { btcToSatoshisNumber, satoshisToBtc } from '../utils/currency.utils'
 import Decimal from 'decimal.js'
-import { AddressSnapshot } from '@prisma/client'
+import { AddressSnapshot, AddressTag } from '@prisma/client'
 import { calculateSkip } from 'src/utils/utils'
 
 @Injectable()
@@ -852,27 +852,57 @@ export class ExplorerService {
    * 比较今天和昨天的富豪榜
    */
   async getWhaleChanges(dateString?: string) {
-    let todaySnaps: AddressSnapshot[] = []
+    let todaySnaps: (AddressSnapshot & { tags?: { name: string; type: string; description: string; sortOrder: number }[] })[] = []
+
     let today = new Date()
     if (dateString) {
       today = new Date(dateString)
       today.setUTCHours(0, 0, 0, 0)
-      todaySnaps = await this.prisma.addressSnapshot.findMany({
+      const snaps = await this.prisma.addressSnapshot.findMany({
         where: { date: today, rank: { lte: 100 } },
         orderBy: { rank: 'asc' }
       })
+
+      const tags = await this.prisma.addressTag.findMany({
+        where: { address: { in: snaps.map((s) => s.address) }, status: 1 }
+      })
+
+      // 组装 tags
+      const tagsMap = new Map<string, { name: string; type: string; description: string; sortOrder: number }[]>()
+      tags.forEach((tag) => {
+        if (!tagsMap.has(tag.address)) {
+          tagsMap.set(tag.address, [])
+        }
+        tagsMap.get(tag.address)?.push({
+          name: tag.name,
+          type: tag.type,
+          description: tag.description || '',
+          sortOrder: tag.sortOrder
+        })
+      })
+
+      todaySnaps = snaps.map((snap) => ({
+        ...snap,
+        tags: tagsMap.get(snap.address) || []
+      }))
     } else {
       const topHolders = await this.prisma.address.findMany({
         orderBy: { balance: 'desc' },
         take: 100,
-        select: { address: true, balance: true }
+        select: { address: true, balance: true, tags: { where: { status: 1 } } }
       })
       const snapshotData = topHolders.map((holder, index) => ({
         id: holder.address,
         address: holder.address,
         balance: holder.balance,
         rank: index + 1, // 排名
-        date: today
+        date: today,
+        tags: holder.tags.map((tag) => ({
+          name: tag.name,
+          type: tag.type,
+          description: tag.description || '',
+          sortOrder: tag.sortOrder
+        }))
       }))
       todaySnaps = snapshotData
     }
@@ -908,7 +938,8 @@ export class ExplorerService {
         currentRank: todaySnap.rank,
         currentBalance: todaySnap.balance,
         rankChange: rankChange, // null, 正数 (上升), 负数 (下降)
-        balanceChange: balanceChange // null, 正数 (增加), 负数 (减少)
+        balanceChange: balanceChange, // null, 正数 (增加), 负数 (减少)
+        tags: todaySnap.tags
       }
     })
 
