@@ -75,6 +75,9 @@ model Address {
   // 关系：一个地址可以有多个标签
   tags AddressTag[]
 
+  // 是否是dap创建的地址
+  isDapCreated Boolean @default(false)
+
   @@index([balance]) // 为持币排名创建索引
   @@index([lastActive]) // 为查询活跃度创建索引
 }
@@ -197,4 +200,50 @@ model MempoolTransaction {
   // 存储输入输出详情，使用 JSON 格式
   // io
   io Json
+}
+
+// 每天 dap 功能统计表，（消耗了多少金额、产生了多少个地址、产生了多少个交易）
+model DapStatsDate {
+  id String @id @default(cuid())
+
+  date DateTime @db.Date // 只存储日期
+
+  // 统计指标
+  totalAmount BigInt // 总金额（单位：聪）
+  totalAddrs  Int // 总地址数
+  totalTxs    Int // 总交易数
+
+  @@unique([date]) // 确保一个日期只有一条记录
+  @@index([date]) // 快速查询某一天的统计数据
+}
+
+// Dap 数据表 - 存储解析后的 DAP 数据内容
+model DapData {
+  id          String @id @default(cuid())
+  txid        String // 关联的交易ID
+  blockHeight Int // 区块高度
+  address     String // 创建此 DAP 数据的地址
+
+  // 协议信息
+  magicHeader String // 协议头 (hex格式)
+  // 数据内容
+  dataContent String @db.Text // 解析后的文本内容
+  chunkCount  Int // 分片数量
+
+  // 费用信息（用于排名）
+  totalFee         BigInt // 支付的平台的总手续费 (satoshis)
+  totalOutputValue BigInt // 总输出金额 (satoshis)
+  sortOrder        Int    @default(0) // 排序顺序
+
+  // 是否有违规内容
+  isViolation Boolean @default(false)
+
+  // 时间
+  timestamp DateTime // 交易时间
+
+  @@index([txid])
+  @@index([address])
+  @@index([blockHeight])
+  @@index([sortOrder]) // 按排序顺序查询
+  @@index([dataContent]) // 按数据内容模糊查询
 }

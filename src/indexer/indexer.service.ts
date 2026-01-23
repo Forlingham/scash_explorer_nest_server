@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { RpcService } from '../rpc/rpc.service'
 import { Prisma } from '@prisma/client'
 import { btcToSatoshis, btcToSatoshisNumber } from '../utils/currency.utils'
+import { DapService } from '../dap/dap.service'
 
 /**
  * 定义一个 Prisma 事务客户端的类型，用于在函数间传递。
@@ -19,7 +20,8 @@ export class IndexerService implements OnModuleInit {
 
   constructor(
     private readonly rpc: RpcService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly dapService: DapService
   ) {}
 
   /**
@@ -214,13 +216,13 @@ export class IndexerService implements OnModuleInit {
         })
 
         // --- [新增] 从 MempoolTransaction 表中删除已打包的交易 ---
-        const txIds = block.tx.map((t: any) => t.txid);
+        const txIds = block.tx.map((t: any) => t.txid)
         if (txIds.length > 0) {
           await tx.mempoolTransaction.deleteMany({
             where: {
               txid: { in: txIds }
             }
-          });
+          })
           // this.logger.debug(`Removed ${txIds.length} transactions from MempoolTransaction.`);
         }
         // --- Mempool 清理结束 ---
@@ -320,11 +322,24 @@ export class IndexerService implements OnModuleInit {
                   voutIndex: vout.n // 存储 vout 索引
                 }
               })
+
+              // [新增] 检测 DAP 地址并标记
+              if (this.dapService.isDapAddress(address)) {
+                await tx.address.update({
+                  where: { address },
+                  data: { isDapCreated: true }
+                })
+              }
             } else {
               // this.logger.debug(
               //   `Skipping vout ${txn.txid}:${vout.n} (Type: ${vout.scriptPubKey?.type})`,
               // );
             }
+          }
+
+          // [新增] 处理 DAP 数据解析和存储
+          if (this.dapService.isAvailable()) {
+            await this.dapService.processTransactionDap(txn.txid, block.height, blockTimestamp, txn.vout)
           }
         }
       },
@@ -346,7 +361,7 @@ export class IndexerService implements OnModuleInit {
     tx?: PrismaTransactionClient
   ): Promise<{ address: string; amount: bigint } | null> {
     // 如果没有传入事务客户端，使用默认的 prisma 服务
-    const client = tx || this.prisma;
+    const client = tx || this.prisma
 
     // --- 方案 B: (首选) 从数据库查找 ---
     try {
