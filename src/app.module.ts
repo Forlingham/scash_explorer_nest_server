@@ -7,6 +7,7 @@ import { IndexerModule } from './indexer/indexer.module'
 import { ExplorerModule } from './explorer/explorer.module'
 import { SnapshotModule } from './snapshot/snapshot.module'
 import { transferModule } from './transfer/transfer.module'
+import { DapModule } from './dap/dap.module'
 import { CacheModule } from './common/services/cache.module'
 import { AppController } from './app.controller'
 
@@ -20,7 +21,8 @@ import { AppController } from './app.controller'
     IndexerModule,
     ExplorerModule,
     SnapshotModule,
-    transferModule
+    transferModule,
+    DapModule
   ],
   controllers: [AppController],
   providers: []

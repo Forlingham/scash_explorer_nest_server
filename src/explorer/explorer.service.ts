@@ -643,9 +643,11 @@ export class ExplorerService {
   async getWalletStats() {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     const activeCount = await this.prisma.address.count({
-      where: { lastActive: { gte: thirtyDaysAgo } }
+      where: { lastActive: { gte: thirtyDaysAgo }, isDapCreated: false }
     })
-    const totalCount = await this.prisma.address.count()
+    const totalCount = await this.prisma.address.count({
+      where: { isDapCreated: false }
+    })
     return {
       activeCount,
       inactiveCount: totalCount - activeCount,
@@ -657,6 +659,7 @@ export class ExplorerService {
   async getTopHolders() {
     return this.prisma.address.findMany({
       orderBy: { balance: 'desc' },
+      where: { isDapCreated: false },
       take: 100,
       select: {
         address: true,
@@ -1131,7 +1134,8 @@ export class ExplorerService {
           },
           balance: {
             gt: BigInt(0)
-          }
+          },
+          isDapCreated: false
         },
         _count: true,
         _sum: {
@@ -1147,7 +1151,8 @@ export class ExplorerService {
           },
           balance: {
             gt: BigInt(0)
-          }
+          },
+          isDapCreated: false
         },
         _count: true,
         _sum: {
@@ -1163,7 +1168,8 @@ export class ExplorerService {
           },
           balance: {
             gt: BigInt(0)
-          }
+          },
+          isDapCreated: false
         },
         _count: true,
         _sum: {
@@ -1179,7 +1185,8 @@ export class ExplorerService {
           },
           balance: {
             gt: BigInt(0)
-          }
+          },
+          isDapCreated: false
         },
         _count: true,
         _sum: {
@@ -1195,7 +1202,8 @@ export class ExplorerService {
           },
           balance: {
             gt: BigInt(0)
-          }
+          },
+          isDapCreated: false
         },
         _count: true,
         _sum: {
@@ -1211,7 +1219,8 @@ export class ExplorerService {
         where: {
           balance: {
             gt: BigInt(0)
-          }
+          },
+          isDapCreated: false
         }
       })
     ])
@@ -1320,7 +1329,8 @@ export class ExplorerService {
         balance: {
           gt: BigInt(0)
         },
-        ...periodConfig.whereCondition
+        ...periodConfig.whereCondition,
+        isDapCreated: false
       },
       select: {
         address: true,
@@ -1341,7 +1351,8 @@ export class ExplorerService {
         balance: {
           gt: BigInt(0)
         },
-        ...periodConfig.whereCondition
+        ...periodConfig.whereCondition,
+        isDapCreated: false
       },
       _count: true,
       _sum: {
@@ -1518,7 +1529,8 @@ export class ExplorerService {
         where: {
           balance: {
             gt: 0
-          }
+          },
+          isDapCreated: false
         }
       })
 
@@ -1538,6 +1550,9 @@ export class ExplorerService {
           whereCondition.balance.gte = range.minSatoshis
           whereCondition.balance.lt = range.maxSatoshis
         }
+
+        // 添加 isDapCreated: false 条件
+        whereCondition.isDapCreated = false
 
         const count = await this.prisma.address.count({
           where: whereCondition
@@ -1583,7 +1598,8 @@ export class ExplorerService {
         where: {
           balance: {
             gt: 0
-          }
+          },
+          isDapCreated: false
         }
       })
 
@@ -1594,7 +1610,8 @@ export class ExplorerService {
         where: {
           balance: {
             gt: 0
-          }
+          },
+          isDapCreated: false
         },
         orderBy: {
           balance: 'desc'
@@ -1660,6 +1677,9 @@ export class ExplorerService {
     const addr = await this.prisma.address.findUnique({ where: { address } })
     if (!addr) {
       throw new NotFoundException(`Address ${address} not found`)
+    }
+    if (addr.isDapCreated) {
+      throw new NotFoundException('DAP addresses cannot be tagged')
     }
 
     // 创建新标签（默认启用）

@@ -245,5 +245,8 @@ model DapData {
   @@index([address])
   @@index([blockHeight])
   @@index([sortOrder]) // 按排序顺序查询
-  @@index([dataContent]) // 按数据内容模糊查询
+  // 注意：pg_trgm 索引需要手动创建
+//   -- Add pg_trgm index for DapData.dataContent fuzzy search
+// CREATE EXTENSION IF NOT EXISTS pg_trgm;
+// CREATE INDEX IF NOT EXISTS "DapData_dataContent_trgm_idx" ON "DapData" USING gin ("dataContent" gin_trgm_ops);
 }

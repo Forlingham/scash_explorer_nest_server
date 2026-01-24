@@ -50,6 +50,3 @@ CREATE INDEX "DapData_blockHeight_idx" ON "DapData"("blockHeight");
 
 -- CreateIndex
 CREATE INDEX "DapData_sortOrder_idx" ON "DapData"("sortOrder");
-
--- CreateIndex
-CREATE INDEX "DapData_dataContent_idx" ON "DapData"("dataContent");
