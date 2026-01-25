@@ -241,14 +241,13 @@ export class IndexerService implements OnModuleInit {
             }
           })
 
-          // 2.2 处理 Vin (花费，负数)
+          // 2. 处理 Vin (花费，负数) 和 Vout (接收，正数)
+          // 修复找零统计问题：先收集输入信息，再处理输出时区分找零
+          const inputAddressAmounts = new Map<string, bigint>() // 记录每个地址在该交易中的总输入金额
+
           if (!txn.vin[0].coinbase) {
             for (const vin of txn.vin) {
-              const prevVout = await this.findPreviousVout(
-                vin.txid,
-                vin.vout,
-                tx // 传递事务
-              )
+              const prevVout = await this.findPreviousVout(vin.txid, vin.vout, tx)
 
               if (!prevVout) {
                 this.logger.warn(`Skipping Vin for tx ${txn.txid}: Could not find prev vout ${vin.txid}:${vin.vout}`)
@@ -257,7 +256,10 @@ export class IndexerService implements OnModuleInit {
 
               const { address, amount } = prevVout
 
-              // [FIXED] 先更新 Address
+              // 累加该地址的输入金额（处理多输入情况）
+              inputAddressAmounts.set(address, (inputAddressAmounts.get(address) || 0n) + amount)
+
+              // [FIXED] 先更新 Address（sent累计输入金额）
               await tx.address.upsert({
                 where: { address: address },
                 create: {
@@ -289,51 +291,90 @@ export class IndexerService implements OnModuleInit {
           }
 
           // 2.3 处理 Vout (接收，正数)
+          // 收集找零金额，用于后续扣除sent和received
+          const addressChangeAmounts = new Map<string, bigint>()
+
           for (const vout of txn.vout) {
-            // [FIXED] 检查 vout.scriptPubKey.address (单数)
             if (vout.scriptPubKey && vout.scriptPubKey.address) {
               const address = vout.scriptPubKey.address
               const amount = btcToSatoshis(vout.value)
 
-              // [FIXED] 先更新 Address
-              await tx.address.upsert({
-                where: { address: address },
-                create: {
-                  address: address,
-                  balance: amount,
-                  received: amount,
-                  txCount: 1,
-                  lastActive: blockTimestamp
-                },
-                update: {
-                  balance: { increment: amount },
-                  received: { increment: amount },
-                  txCount: { increment: 1 },
-                  lastActive: blockTimestamp
-                }
-              })
+              // 判断是否为找零：如果该地址在输入中出现过
+              const inputAmount = inputAddressAmounts.get(address) || 0n
+              if (inputAmount > 0) {
+                // 记录找零金额
+                const totalChange = addressChangeAmounts.get(address) || 0n
+                addressChangeAmounts.set(address, totalChange + amount)
+              }
 
-              // [FIXED] 再创建 TransactionIO
+              // 判断是否为找零输出
+              const isChangeOutput = inputAmount > 0 && amount <= inputAmount
+
+              if (isChangeOutput) {
+                // 找零输出：只更新balance和txCount，不计入received
+                await tx.address.upsert({
+                  where: { address: address },
+                  create: {
+                    address: address,
+                    balance: amount,
+                    txCount: 1,
+                    lastActive: blockTimestamp
+                  },
+                  update: {
+                    balance: { increment: amount },
+                    lastActive: blockTimestamp
+                  }
+                })
+              } else {
+                // 正常收款输出：计入received
+                await tx.address.upsert({
+                  where: { address: address },
+                  create: {
+                    address: address,
+                    balance: amount,
+                    received: amount,
+                    txCount: 1,
+                    lastActive: blockTimestamp
+                  },
+                  update: {
+                    balance: { increment: amount },
+                    received: { increment: amount },
+                    txCount: { increment: 1 },
+                    lastActive: blockTimestamp
+                  }
+                })
+              }
+
+              // 创建 TransactionIO
               await tx.transactionIO.create({
                 data: {
                   txid: txn.txid,
                   address: address,
-                  amount: amount, // 正数
-                  voutIndex: vout.n // 存储 vout 索引
+                  amount: amount,
+                  voutIndex: vout.n
                 }
               })
 
-              // [新增] 检测 DAP 地址并标记
+              // 检测 DAP 地址并标记
               if (this.dapService.isDapAddress(address)) {
                 await tx.address.update({
                   where: { address },
                   data: { isDapCreated: true }
                 })
               }
-            } else {
-              // this.logger.debug(
-              //   `Skipping vout ${txn.txid}:${vout.n} (Type: ${vout.scriptPubKey?.type})`,
-              // );
+            }
+          }
+
+          // 扣除找零金额：sent不计入找零（只算真正发给他人的）
+          for (const [address, changeAmount] of addressChangeAmounts) {
+            if (changeAmount > 0n) {
+              await tx.address.update({
+                where: { address },
+                data: {
+                  sent: { decrement: changeAmount },
+                  txCount: { decrement: 1 }
+                }
+              })
             }
           }
 
