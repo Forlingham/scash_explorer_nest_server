@@ -33,7 +33,7 @@ export class DapService {
     return this.dap.isScashDAPAddress(address)
   }
 
-  parseDapData(vouts: any[]): DapParseResult | null {
+  parseDapData(vouts: any[], inputAddress: string[]): DapParseResult | null {
     if (!this.dap || vouts.length === 0) return null
     const appFeeAddress = getArrFeeAddress()
     const appFee = vouts
@@ -44,7 +44,17 @@ export class DapService {
       const address = vout.scriptPubKey?.address
       return address && this.dap!.isScashDAPAddress(address)
     })
+
     if (dapOutputs.length === 0) return null
+
+    // 当前输出地址中排除dap地址和手续费地址后，如果还有别的地址就是一个转账留言的dap
+    const isMessageDap =
+      vouts.find((vout) => {
+        const address = vout.scriptPubKey?.address
+        if (!address || address === appFeeAddress) return false
+        if (inputAddress.includes(address)) return false
+        return !this.dap!.isScashDAPAddress(address)
+      }) !== undefined
     const content = this.dap.parseDapTransaction(dapOutputs)
     if (!content) return null
     const magicHeader = dapOutputs.length > 0 ? this.getMagicHeader(dapOutputs[0].scriptPubKey.address) : ''
@@ -56,7 +66,8 @@ export class DapService {
       magicHeader,
       chunkCount,
       totalFee: appFee,
-      totalOutputValue
+      totalOutputValue,
+      isMessageDap
     }
   }
 
@@ -77,6 +88,7 @@ export class DapService {
         dataContent: parseResult.content,
         chunkCount: parseResult.chunkCount,
         totalFee: parseResult.totalFee,
+        isMessageDap: parseResult.isMessageDap,
         totalOutputValue: parseResult.totalOutputValue,
         sortOrder: 1,
         timestamp
@@ -84,10 +96,10 @@ export class DapService {
     })
   }
 
-  async processTransactionDap(txid: string, blockHeight: number, timestamp: Date, vouts: any[]): Promise<number> {
+  async processTransactionDap(txid: string, blockHeight: number, timestamp: Date, vouts: any[], inputAddress: string[]): Promise<number> {
     if (!this.dap) return 0
 
-    const dapParseResult = this.parseDapData(vouts)
+    const dapParseResult = this.parseDapData(vouts, inputAddress)
     if (!dapParseResult) return 0
 
     const dapAddresses = vouts.map((vout) => vout.scriptPubKey.address)
@@ -108,4 +120,5 @@ export interface DapParseResult {
   chunkCount: number
   totalFee: bigint
   totalOutputValue: bigint
+  isMessageDap: boolean
 }

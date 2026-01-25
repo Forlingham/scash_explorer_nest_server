@@ -28,6 +28,7 @@ CREATE TABLE "DapData" (
     "totalOutputValue" BIGINT NOT NULL,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
     "isViolation" BOOLEAN NOT NULL DEFAULT false,
+    "isMessageDap" BOOLEAN NOT NULL DEFAULT false,
     "timestamp" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "DapData_pkey" PRIMARY KEY ("id")

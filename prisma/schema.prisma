@@ -236,17 +236,19 @@ model DapData {
   sortOrder        Int    @default(0) // 排序顺序
 
   // 是否有违规内容
-  isViolation Boolean @default(false)
+  isViolation  Boolean @default(false)
+  // 是否是转账留言的dap
+  isMessageDap Boolean @default(false)
 
   // 时间
   timestamp DateTime // 交易时间
+  // 注意：pg_trgm 索引需要手动创建
+  //   -- Add pg_trgm index for DapData.dataContent fuzzy search
+  // CREATE EXTENSION IF NOT EXISTS pg_trgm;
+  // CREATE INDEX IF NOT EXISTS "DapData_dataContent_trgm_idx" ON "DapData" USING gin ("dataContent" gin_trgm_ops);
 
   @@index([txid])
   @@index([address])
   @@index([blockHeight])
   @@index([sortOrder]) // 按排序顺序查询
-  // 注意：pg_trgm 索引需要手动创建
-//   -- Add pg_trgm index for DapData.dataContent fuzzy search
-// CREATE EXTENSION IF NOT EXISTS pg_trgm;
-// CREATE INDEX IF NOT EXISTS "DapData_dataContent_trgm_idx" ON "DapData" USING gin ("dataContent" gin_trgm_ops);
 }

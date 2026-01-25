@@ -380,7 +380,7 @@ export class IndexerService implements OnModuleInit {
 
           // [新增] 处理 DAP 数据解析和存储
           if (this.dapService.isAvailable()) {
-            await this.dapService.processTransactionDap(txn.txid, block.height, blockTimestamp, txn.vout)
+            await this.dapService.processTransactionDap(txn.txid, block.height, blockTimestamp, txn.vout, [...inputAddressAmounts.keys()])
           }
         }
       },

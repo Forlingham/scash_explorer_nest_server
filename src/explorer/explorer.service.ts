@@ -621,9 +621,19 @@ export class ExplorerService {
     // 处理交易数据，提取所需格式（与getBlockTransactions方法保持一致）
     const [processedTransaction] = this.processTransactionData([tx], currentBlockHeight)
 
+    // 判断是否有dap数据，是否是留言dap
+    const dapData = await this.prisma.dapData.findFirst({
+      where: { txid: txid }
+    })
+    const isMessageDap = dapData?.isMessageDap || false
+
     return {
       tx,
-      processedTransaction
+      processedTransaction,
+      dapStatus: {
+        isDap: dapData !== null,
+        isMessageDap
+      }
     }
   }
 
