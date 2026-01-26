@@ -26,7 +26,16 @@ export class ExplorerService {
   }
 
   // 处理交易数据，提取所需格式
-  private processTransactionData(transactions: any[], currentBlockHeight?: number) {
+  private async processTransactionData(transactions: any[], currentBlockHeight?: number) {
+    // 批量查询 dapData，避免 N+1 问题
+    const txids = transactions.map((tx) => tx.txid)
+    const dapDataList = await this.prisma.dapData.findMany({
+      where: { txid: { in: txids } }
+    })
+
+    // 构建 Map 以便快速查找
+    const dapDataMap = new Map(dapDataList.map((data) => [data.txid, data]))
+
     return transactions.map((tx) => {
       // 分离输入和输出
       const inputs = tx.io.filter((io) => io.amount < 0)
@@ -76,6 +85,10 @@ export class ExplorerService {
       // 如果交易还未被确认（当前区块高度小于交易所在区块高度），确认次数为0
       const confirmations = currentBlockHeight && tx.blockHeight <= currentBlockHeight ? currentBlockHeight - tx.blockHeight + 1 : 0
 
+      // 判断是否有dap数据，是否是留言dap
+      const dapData = dapDataMap.get(tx.txid)
+      const isMessageDap = dapData?.isMessageDap || false
+
       return {
         txid: tx.txid,
         blockHeight: tx.blockHeight,
@@ -87,7 +100,11 @@ export class ExplorerService {
         totalAmount: realTransferAmount, // 真实转账金额
         fee: fee,
         timestamp: tx.timestamp,
-        confirmations: confirmations
+        confirmations: confirmations,
+        dapStatus: {
+          isDap: dapData !== undefined,
+          isMessageDap
+        }
       }
     })
   }
@@ -310,7 +327,7 @@ export class ExplorerService {
     const confirmations = currentBlockHeight - blockHeight + 1
 
     // 处理交易数据，提取所需格式（与transactions方法保持一致）
-    const processedTransactions = this.processTransactionData(transactions, currentBlockHeight)
+    const processedTransactions = await this.processTransactionData(transactions, currentBlockHeight)
 
     return {
       block: {
@@ -388,7 +405,7 @@ export class ExplorerService {
     const currentBlockHeight = await this.getCurrentBlockHeight()
 
     // 处理交易数据，提取所需格式（与getBlockTransactions方法保持一致）
-    const processedTransactions = this.processTransactionData(transactions, currentBlockHeight)
+    const processedTransactions = await this.processTransactionData(transactions, currentBlockHeight)
 
     return {
       address,
@@ -560,7 +577,7 @@ export class ExplorerService {
     const totalPages = Math.ceil(total / pageSize)
 
     // 处理交易数据，提取所需格式
-    const processedTransactions = this.processTransactionData(transactions, currentBlockHeight)
+    const processedTransactions = await this.processTransactionData(transactions, currentBlockHeight)
 
     return {
       list: processedTransactions,
@@ -603,7 +620,7 @@ export class ExplorerService {
         where: { txid: txid }
       })
       if (mempoolTx) {
-        const [processedTransaction] = this.processTransactionData([mempoolTx])
+        const [processedTransaction] = await this.processTransactionData([mempoolTx])
         return {
           tx: mempoolTx,
           processedTransaction: processedTransaction
@@ -619,21 +636,11 @@ export class ExplorerService {
     const currentBlockHeight = await this.getCurrentBlockHeight()
 
     // 处理交易数据，提取所需格式（与getBlockTransactions方法保持一致）
-    const [processedTransaction] = this.processTransactionData([tx], currentBlockHeight)
-
-    // 判断是否有dap数据，是否是留言dap
-    const dapData = await this.prisma.dapData.findFirst({
-      where: { txid: txid }
-    })
-    const isMessageDap = dapData?.isMessageDap || false
+    const [processedTransaction] = await this.processTransactionData([tx], currentBlockHeight)
 
     return {
       tx,
-      processedTransaction,
-      dapStatus: {
-        isDap: dapData !== null,
-        isMessageDap
-      }
+      processedTransaction
     }
   }
 
@@ -1717,7 +1724,7 @@ export class ExplorerService {
 
     const total = await this.prisma.mempoolTransaction.count()
     const totalPages = Math.ceil(total / pageSize)
-    const processedTransactions = this.processTransactionData(transactions)
+    const processedTransactions = await this.processTransactionData(transactions)
     return {
       list: processedTransactions,
       pagination: {
