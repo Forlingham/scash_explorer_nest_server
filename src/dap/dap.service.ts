@@ -117,7 +117,7 @@ export class DapService {
       await this.saveDapData(txid, blockHeight, uniqueAddresses[0], timestamp, dapParseResult)
       await this.updateDailyStats(
         timestamp,
-        dapParseResult.totalFee,
+        dapParseResult.totalOutputValue,
         uniqueAddresses.filter((addr) => this.dap.isScashDAPAddress(addr)).length
       )
       return uniqueAddresses.length
