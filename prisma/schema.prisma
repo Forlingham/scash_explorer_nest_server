@@ -251,4 +251,6 @@ model DapData {
   @@index([address])
   @@index([blockHeight])
   @@index([sortOrder]) // 按排序顺序查询
+  @@index([isViolation]) // 按违规状态查询
+  @@index([isMessageDap]) // 按转账留言状态查询
 }

@@ -31,7 +31,8 @@ export class DapController {
     @Query('page', new ParseIntPipe({ optional: true })) page?: number,
     @Query('pageSize', new ParseIntPipe({ optional: true })) pageSize?: number,
     @Query('sortBy') sortBy?: string,
-    @Query('sortOrder') sortOrder?: 'asc' | 'desc'
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
+    @Query('isTop', new ParseBoolPipe({ optional: true })) isTop?: boolean
   ) {
     page = page || 1
     pageSize = pageSize || 20
@@ -41,7 +42,7 @@ export class DapController {
     this.logger.log(
       `Request received for /dap/list filterTransfer=${filterTransfer} address=${address} txid=${txid} content=${content} page=${page}`
     )
-console.log(typeof filterTransfer);
+    console.log(typeof filterTransfer)
 
     const where: any = {}
 
@@ -64,6 +65,10 @@ console.log(typeof filterTransfer);
       where.isMessageDap = {
         not: true
       }
+    }
+
+    if (isTop) {
+      where.sortOrder = 9999
     }
 
     const [data, total] = await Promise.all([
@@ -103,6 +108,27 @@ console.log(typeof filterTransfer);
         currentPage: page,
         take: pageSize
       }
+    }
+  }
+
+  /**
+   * 获取 DAP 总统计数据
+   */
+  @Get('stats')
+  async getDapStats() {
+    this.logger.log('Request received for /dap/stats')
+    const result = await this.prisma.dapStatsDate.aggregate({
+      _sum: {
+        totalAmount: true,
+        totalAddrs: true,
+        totalTxs: true
+      }
+    })
+
+    return {
+      totalAmount: result._sum.totalAmount ? result._sum.totalAmount.toString() : '0',
+      totalAddrs: result._sum.totalAddrs || 0,
+      totalTxs: result._sum.totalTxs || 0
     }
   }
 

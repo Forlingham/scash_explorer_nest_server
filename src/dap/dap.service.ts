@@ -106,11 +106,43 @@ export class DapService {
     const uniqueAddresses = [...new Set(dapAddresses)]
 
     if (uniqueAddresses.length > 0) {
+      // 判断是否已经存在
+      const existing = await this.prisma.dapData.findFirst({
+        where: {
+          txid
+        }
+      })
+      if (existing) return 0
+
       await this.saveDapData(txid, blockHeight, uniqueAddresses[0], timestamp, dapParseResult)
+      await this.updateDailyStats(
+        timestamp,
+        dapParseResult.totalFee,
+        uniqueAddresses.filter((addr) => this.dap.isScashDAPAddress(addr)).length
+      )
       return uniqueAddresses.length
     }
 
     return 0
+  }
+
+  private async updateDailyStats(date: Date, fee: bigint, addrCount: number) {
+    const day = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+
+    await this.prisma.dapStatsDate.upsert({
+      where: { date: day },
+      update: {
+        totalAmount: { increment: fee },
+        totalAddrs: { increment: addrCount },
+        totalTxs: { increment: 1 }
+      },
+      create: {
+        date: day,
+        totalAmount: fee,
+        totalAddrs: addrCount,
+        totalTxs: 1
+      }
+    })
   }
 }
 

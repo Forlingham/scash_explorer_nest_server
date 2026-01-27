@@ -51,3 +51,9 @@ CREATE INDEX "DapData_blockHeight_idx" ON "DapData"("blockHeight");
 
 -- CreateIndex
 CREATE INDEX "DapData_sortOrder_idx" ON "DapData"("sortOrder");
+
+-- CreateIndex
+CREATE INDEX "DapData_isViolation_idx" ON "DapData"("isViolation");
+
+-- CreateIndex
+CREATE INDEX "DapData_isMessageDap_idx" ON "DapData"("isMessageDap");
