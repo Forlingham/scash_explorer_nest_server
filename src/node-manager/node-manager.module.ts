@@ -1,6 +1,7 @@
-import { Global, Module } from '@nestjs/common'
+import { Global, Module, forwardRef } from '@nestjs/common'
 import { NodeManagerService } from './node-manager.service'
 import { NodeManagerController } from './node-manager.controller'
+import { RpcModule } from '../rpc/rpc.module'
 
 /**
  * 节点管理模块
@@ -10,6 +11,7 @@ import { NodeManagerController } from './node-manager.controller'
  */
 @Global()
 @Module({
+  imports: [forwardRef(() => RpcModule)],
   controllers: [NodeManagerController],
   providers: [NodeManagerService],
   exports: [NodeManagerService]

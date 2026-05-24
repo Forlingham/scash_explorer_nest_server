@@ -1,6 +1,6 @@
 // src/rpc/rpc.service.ts
 import { HttpService } from '@nestjs/axios'
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common'
+import { Inject, Injectable, InternalServerErrorException, Logger, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { firstValueFrom } from 'rxjs'
 import axios from 'axios'
@@ -14,6 +14,7 @@ export class RpcService {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    @Inject(forwardRef(() => NodeManagerService))
     private readonly nodeManager: NodeManagerService
   ) {}
 
