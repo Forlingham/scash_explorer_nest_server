@@ -102,6 +102,16 @@ export class DapService {
     const dapParseResult = this.parseDapData(vouts, inputAddress)
     if (!dapParseResult) return 0
 
+    // 对解析内容进行 JSON 判断处理
+    const processedContent = this.processContentForStorage(dapParseResult.content)
+    if (processedContent === null) {
+      // JSON 格式但缺少 type 字段，跳过存储
+      return 0
+    }
+
+    // 使用处理后的内容覆盖原始内容
+    dapParseResult.content = processedContent
+
     const dapAddresses = vouts.map((vout) => vout.scriptPubKey.address)
     const uniqueAddresses = [...new Set(dapAddresses)]
 
@@ -124,6 +134,36 @@ export class DapService {
     }
 
     return 0
+  }
+
+  /**
+   * 处理 DAP 内容的存储逻辑
+   *
+   * 规则：
+   * 1. 如果内容是 JSON 且包含 type 字段 → 返回 type 的值作为存储内容
+   * 2. 如果内容是 JSON 但没有 type 字段 → 返回 null（不存储）
+   * 3. 如果内容不是 JSON → 原样返回（照常存储）
+   */
+  private processContentForStorage(content: string): string | null {
+    try {
+      const parsed = JSON.parse(content)
+
+      // 确认解析结果是对象类型（排除数组、数字等 JSON 基础类型）
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        if ('type' in parsed && parsed.type !== undefined && parsed.type !== null) {
+          // JSON 且有 type 字段，使用 type 值
+          return String(parsed.type)
+        }
+        // JSON 但没有 type 字段，不存储
+        return null
+      }
+
+      // 其他 JSON 基础类型（字符串、数字、数组等），视为非结构化数据，直接存储
+      return content
+    } catch {
+      // 不是合法 JSON，直接存储原始内容
+      return content
+    }
   }
 
   private async updateDailyStats(date: Date, fee: bigint, addrCount: number) {
