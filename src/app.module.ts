@@ -7,7 +7,6 @@ import { RpcModule } from './rpc/rpc.module'
 import { IndexerModule } from './indexer/indexer.module'
 import { ExplorerModule } from './explorer/explorer.module'
 import { SnapshotModule } from './snapshot/snapshot.module'
-import { transferModule } from './transfer/transfer.module'
 import { DapModule } from './dap/dap.module'
 import { CacheModule } from './common/services/cache.module'
 import { AppController } from './app.controller'
@@ -18,12 +17,11 @@ import { AppController } from './app.controller'
     HttpModule,
     PrismaModule,
     CacheModule,
-    NodeManagerModule, // 节点管理模块（必须在 RpcModule 之前注册）
+    NodeManagerModule,
     RpcModule,
     IndexerModule,
     ExplorerModule,
     SnapshotModule,
-    transferModule,
     DapModule
   ],
   controllers: [AppController],

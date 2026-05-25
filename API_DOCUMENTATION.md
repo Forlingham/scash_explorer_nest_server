@@ -12,8 +12,7 @@
 - [3. 区块浏览器](#3-区块浏览器)
 - [4. 统计数据](#4-统计数据)
 - [5. DAP 数据](#5-dap-数据)
-- [6. 转账/RPC 代理](#6-转账rpc-代理)
-- [7. 公共 RPC 代理](#7-公共-rpc-代理)
+- [6. 公共 RPC 代理](#6-公共-rpc-代理)
 
 ---
 
@@ -565,34 +564,7 @@
 
 ---
 
-## 6. 转账/RPC 代理
-
-直接代理 RPC 调用的接口（无缓存）。
-
-| 接口 | 说明 |
-|------|------|
-| `GET /api/transfer/blockchain-info` | 获取区块链信息 |
-| `GET /api/transfer/block-count` | 获取当前区块高度 |
-| `GET /api/transfer/block-hash/:height` | 根据高度获取区块哈希 |
-| `GET /api/transfer/block/:hash?verbosity=` | 根据哈希获取区块信息 |
-| `GET /api/transfer/best-block-hash` | 获取最佳区块哈希 |
-| `GET /api/transfer/transaction/:txid?verbose=` | 获取交易信息 |
-| `GET /api/transfer/raw-transaction/:txid?verbose=` | 获取原始交易信息 |
-| `GET /api/transfer/network-info` | 获取网络信息 |
-| `GET /api/transfer/mining-info` | 获取挖矿信息 |
-| `GET /api/transfer/mempool-info` | 获取内存池信息 |
-| `GET /api/transfer/raw-mempool?verbose=` | 获取内存池交易列表 |
-| `GET /api/transfer/wallet-info` | 获取钱包信息 |
-| `GET /api/transfer/balance?account=&minconf=` | 获取余额 |
-| `POST /api/transfer/new-address` | 获取新地址 |
-| `POST /api/transfer/send-to-address` | 发送到地址 |
-| `GET /api/transfer/validate-address/:address` | 验证地址 |
-| `GET /api/transfer/connection-count` | 获取节点连接数 |
-| `GET /api/transfer/difficulty` | 获取难度 |
-
----
-
-## 7. 公共 RPC 代理
+## 6. 公共 RPC 代理
 
 ### `POST /api/rpc`
 
@@ -610,7 +582,27 @@
 }
 ```
 
-**允许的方法白名单：** 详见 `src/utils/utils.ts` 中的 `rpcAllowedMethods`。
+**允许的方法白名单：**
+
+| 方法 | 说明 |
+|------|------|
+| `getbestblockhash` | 获取最佳区块哈希 |
+| `getblock` | 获取区块信息 |
+| `getblockchaininfo` | 获取区块链信息 |
+| `getblockcount` | 获取区块高度 |
+| `getblockhash` | 根据高度获取哈希 |
+| `getblockheader` | 获取区块头 |
+| `getchaintips` | 获取链分叉信息 |
+| `getconnectioncount` | 获取连接数 |
+| `getdifficulty` | 获取难度 |
+| `getmempoolinfo` | 获取内存池信息 |
+| `getrawmempool` | 获取内存池交易列表 |
+| `getrawtransaction` | 获取原始交易 |
+| `gettxout` | 获取 UTXO 信息 |
+| `estimatesmartfee` | 费率估算 |
+| `sendrawtransaction` | 广播已签名交易 |
+
+> ⚠️ **安全说明：** 白名单中不包含任何钱包操作方法（如 `sendtoaddress`、`getnewaddress`、`getwalletinfo`、`getbalance` 等），也不包含高资源消耗方法（如 `scantxoutset`、`gettxoutsetinfo`）。
 
 **限制：**
 - Content-Type 必须为 `application/json`

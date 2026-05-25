@@ -12,6 +12,7 @@ export function calculateSkip(page: number, pageSize: number = 20): number {
 
 
 // 允许转发的 RPC 方法白名单
+// 注意：不允许任何涉及钱包操作的方法（如 sendtoaddress、getnewaddress、getwalletinfo 等）
 export const rpcAllowedMethods = [
     'getbestblockhash',
     'getblock',
@@ -26,8 +27,6 @@ export const rpcAllowedMethods = [
     'getrawmempool',
     'getrawtransaction',
     'gettxout',
-    'gettxoutsetinfo',
     'estimatesmartfee',
-    'scantxoutset',
     'sendrawtransaction'
   ]
