@@ -234,13 +234,33 @@ export class ExplorerService {
 
     const totalBlocks = minerStats.reduce((sum, s) => sum + s._count.minerAddress, 0)
 
+    // 查询所有矿工地址的标签
+    const minerAddresses = minerStats.map((s) => s.minerAddress).filter(Boolean) as string[]
+    const tags = await this.prisma.addressTag.findMany({
+      where: {
+        address: { in: minerAddresses },
+        status: 1
+      },
+      orderBy: { sortOrder: 'desc' },
+      select: { address: true, name: true }
+    })
+
+    // 构建地址 → 标签名映射（取排序最高的标签）
+    const tagMap = new Map<string, string>()
+    for (const tag of tags) {
+      if (!tagMap.has(tag.address)) {
+        tagMap.set(tag.address, tag.name)
+      }
+    }
+
     // 格式化返回数据
     return {
       totalBlocksScanned: totalBlocks,
       minerDistribution: minerStats.map((s) => ({
         address: s.minerAddress,
         blocksMined: s._count.minerAddress,
-        percentage: Number(((s._count.minerAddress / totalBlocks) * 100).toFixed(2))
+        percentage: Number(((s._count.minerAddress / totalBlocks) * 100).toFixed(2)),
+        tag: tagMap.get(s.minerAddress!) || null
       }))
     }
   }
@@ -997,13 +1017,33 @@ export class ExplorerService {
 
     const totalBlocks = minerStats.reduce((sum, s) => sum + s._count.minerAddress, 0)
 
+    // 查询所有矿工地址的标签
+    const minerAddresses = minerStats.map((s) => s.minerAddress).filter(Boolean) as string[]
+    const tags = await this.prisma.addressTag.findMany({
+      where: {
+        address: { in: minerAddresses },
+        status: 1
+      },
+      orderBy: { sortOrder: 'desc' },
+      select: { address: true, name: true }
+    })
+
+    // 构建地址 → 标签名映射（取排序最高的标签）
+    const tagMap = new Map<string, string>()
+    for (const tag of tags) {
+      if (!tagMap.has(tag.address)) {
+        tagMap.set(tag.address, tag.name)
+      }
+    }
+
     // 2. 格式化数据
     return {
       totalBlocksScanned: totalBlocks,
       minerDistribution: minerStats.map((s) => ({
         address: s.minerAddress,
         blocksMined: s._count.minerAddress,
-        percentage: (s._count.minerAddress / totalBlocks) * 100
+        percentage: (s._count.minerAddress / totalBlocks) * 100,
+        tag: tagMap.get(s.minerAddress!) || null
       }))
     }
   }

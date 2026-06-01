@@ -1,13 +1,14 @@
-import { Global, Module } from '@nestjs/common';
-import { RpcService } from './rpc.service';
-import { RpcController } from './rpc.controller';
-import { HttpModule } from '@nestjs/axios';
+import { Global, Module, forwardRef } from '@nestjs/common'
+import { RpcService } from './rpc.service'
+import { RpcController } from './rpc.controller'
+import { HttpModule } from '@nestjs/axios'
+import { NodeManagerModule } from '../node-manager/node-manager.module'
 
 @Global()
 @Module({
-  imports: [HttpModule], // 导入 HttpModule
+  imports: [HttpModule, forwardRef(() => NodeManagerModule)],
   controllers: [RpcController],
   providers: [RpcService],
-  exports: [RpcService], // <-- 导出
+  exports: [RpcService]
 })
 export class RpcModule {}

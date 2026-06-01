@@ -1,26 +1,22 @@
 // src/rpc/rpc.service.ts
 import { HttpService } from '@nestjs/axios'
-import { Injectable, InternalServerErrorException } from '@nestjs/common'
+import { Inject, Injectable, InternalServerErrorException, Logger, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { firstValueFrom } from 'rxjs'
 import axios from 'axios'
 import { rpcAllowedMethods } from '../utils/utils'
+import { NodeManagerService } from '../node-manager/node-manager.service'
 
 @Injectable()
 export class RpcService {
-  private readonly rpcUrl: string
-  private readonly rpcAuth: string
+  private readonly logger = new Logger(RpcService.name)
 
   constructor(
     private readonly httpService: HttpService,
-    private readonly configService: ConfigService
-  ) {
-    this.rpcUrl = this.configService.get<string>('RPC_URL')!
-    const user = this.configService.get<string>('RPC_USER')
-    const pass = this.configService.get<string>('RPC_PASSWORD')
-    // 为 Basic Auth 准备凭证
-    this.rpcAuth = Buffer.from(`${user}:${pass}`).toString('base64')
-  }
+    private readonly configService: ConfigService,
+    @Inject(forwardRef(() => NodeManagerService))
+    private readonly nodeManager: NodeManagerService
+  ) {}
 
   // 允许转发的 RPC 方法白名单
   private readonly allowedMethods = rpcAllowedMethods
@@ -30,7 +26,7 @@ export class RpcService {
    * @param body JSON-RPC 请求体
    */
   async proxy(body: any): Promise<any> {
-    // 3. 安全限制：基础格式校验
+    // 1. 安全限制：基础格式校验
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return {
         result: null,
@@ -41,7 +37,7 @@ export class RpcService {
 
     const { method, params, id, jsonrpc } = body
 
-    // 4. 安全限制：校验 Method
+    // 2. 安全限制：校验 Method
     if (!method || typeof method !== 'string' || !this.allowedMethods.includes(method)) {
       return {
         result: null,
@@ -50,7 +46,7 @@ export class RpcService {
       }
     }
 
-    // 5. 安全限制：校验 Params (必须是数组或未定义)
+    // 3. 安全限制：校验 Params (必须是数组或未定义)
     if (params !== undefined && !Array.isArray(params)) {
       return {
         result: null,
@@ -59,20 +55,24 @@ export class RpcService {
       }
     }
 
-    // 6. 安全限制：重组 Payload，丢弃所有多余字段（防止携带无关数据）
+    // 4. 安全限制：重组 Payload，丢弃所有多余字段（防止携带无关数据）
     const safePayload = {
-      jsonrpc: jsonrpc || '2.0', // 默认 2.0
+      jsonrpc: jsonrpc || '2.0',
       method,
       params: params || [],
-      id: id || null // 保持 ID 透传
+      id: id || null
     }
+
+    // 获取当前活跃节点的连接信息
+    const rpcUrl = this.nodeManager.getActiveRpcUrl()
+    const rpcAuth = this.nodeManager.getActiveRpcAuth()
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.post(this.rpcUrl, safePayload, {
+        this.httpService.post(rpcUrl, safePayload, {
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Basic ${this.rpcAuth}`
+            Authorization: `Basic ${rpcAuth}`
           }
         })
       )
@@ -82,12 +82,49 @@ export class RpcService {
       if (error.response && error.response.data) {
         return error.response.data
       }
-      // 其他网络错误等
-      console.error(`Proxy RPC request failed: ${error.message}`)
+
+      // 网络错误：尝试故障切换后重试一次
+      this.logger.warn(`代理 RPC 请求失败: ${error.message}，尝试切换节点...`)
+      const switched = this.nodeManager.reportFailure()
+
+      if (switched) {
+        return this.retryProxy(safePayload)
+      }
+
       return {
         result: null,
         error: { code: -32603, message: `Internal error: ${error.message}` },
         id: body.id || null
+      }
+    }
+  }
+
+  /**
+   * 故障切换后重试代理请求
+   */
+  private async retryProxy(payload: any): Promise<any> {
+    const rpcUrl = this.nodeManager.getActiveRpcUrl()
+    const rpcAuth = this.nodeManager.getActiveRpcAuth()
+
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.post(rpcUrl, payload, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Basic ${rpcAuth}`
+          }
+        })
+      )
+      this.logger.log('节点切换后代理请求成功')
+      return data
+    } catch (error: any) {
+      if (error.response && error.response.data) {
+        return error.response.data
+      }
+      return {
+        result: null,
+        error: { code: -32603, message: `Internal error after failover: ${error.message}` },
+        id: payload.id || null
       }
     }
   }
@@ -101,16 +138,20 @@ export class RpcService {
     const payload = {
       jsonrpc: '2.0',
       id: Date.now(),
-      method: method,
-      params: params
+      method,
+      params
     }
+
+    // 从 NodeManager 动态获取连接信息
+    const rpcUrl = this.nodeManager.getActiveRpcUrl()
+    const rpcAuth = this.nodeManager.getActiveRpcAuth()
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.post(this.rpcUrl, payload, {
+        this.httpService.post(rpcUrl, payload, {
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Basic ${this.rpcAuth}` // Basic Auth
+            Authorization: `Basic ${rpcAuth}`
           }
         })
       )
@@ -121,9 +162,56 @@ export class RpcService {
 
       return data.result as T
     } catch (error) {
-      console.error(`Failed to call RPC method: ${method}`, error.message)
+      // 判断是否为网络连接错误（区别于 RPC 业务错误）
       if (axios.isAxiosError(error)) {
-        throw new InternalServerErrorException(`Node connection error: ${error.message}`)
+        this.logger.warn(`节点连接失败 [${method}]: ${error.message}，尝试切换节点...`)
+        const switched = this.nodeManager.reportFailure()
+
+        if (switched) {
+          return this.retryCall<T>(method, params)
+        }
+
+        throw new InternalServerErrorException(`所有节点均不可用: ${error.message}`)
+      }
+
+      // RPC 业务错误直接抛出，不触发切换
+      throw error
+    }
+  }
+
+  /**
+   * 故障切换后重试 RPC 调用
+   */
+  private async retryCall<T = any>(method: string, params: any[] = []): Promise<T> {
+    const payload = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method,
+      params
+    }
+
+    const rpcUrl = this.nodeManager.getActiveRpcUrl()
+    const rpcAuth = this.nodeManager.getActiveRpcAuth()
+
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.post(rpcUrl, payload, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Basic ${rpcAuth}`
+          }
+        })
+      )
+
+      if (data.error) {
+        throw new InternalServerErrorException(`RPC Error: ${data.error.message} (Code: ${data.error.code})`)
+      }
+
+      this.logger.log(`节点切换后 RPC 调用成功 [${method}]`)
+      return data.result as T
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new InternalServerErrorException(`节点切换后仍然失败: ${error.message}`)
       }
       throw error
     }
